@@ -3,7 +3,6 @@ module Expr where
 
 import Utils 
 import Data.Array.ST (STArray)
-import GHC.Internal.TypeLits (Mod)
 
 
 data Expr 
