@@ -1,21 +1,13 @@
 module Expr where 
 
 
-import Utils 
-import Data.Array.ST (STArray)
-
-
 data Expr 
     = Lit Lit 
-    | Var String Expr 
+    | Def Def 
+    | Var String
     | Unary Unary Expr 
     | Binary Binary Expr Expr
-    | StrOp StrOp Expr Expr 
-    | TupleOp TupleOp Expr Expr 
-    | ListOp ListOp Expr Expr 
-    | ArrayOp ArrayOp 
-    | DictOp DictOp 
-    | FunOp FunOp Expr Expr 
+    | Ternary Ternary Expr Expr Expr 
     | Let Expr Expr Expr 
     | If Expr Expr Expr 
 
@@ -26,115 +18,63 @@ data Lit
     | LInt Int 
     | LReal Double 
     | LString String 
-    | LList Expr 
-    | LListEmpty [Expr]
+    | LList [Expr] 
+    | LListEmpty Expr
     | LArray [Expr]
-    | LArrayEmpty [Expr]
+    | LArrayEmpty Expr
     | LTuple [Expr]
     | LDict [(Expr, Expr)]
     | LDictEmpty Expr Expr 
     | LArrow String Expr Expr
 
 
+data Def 
+    = DBool 
+    | DInt 
+    | DReal 
+    | DString 
+    | DList Def 
+    | DArray Def 
+    | DTuple [Def]
+    | DDict Def Def
+    | DArrow Def Def 
+
+
 data Unary 
     = Not 
-    | Negate 
+    | Neg
+    | ToInt  
+    | ToReal
     | Fact 
-    | StrLen 
-    | TupleLen 
-    | ListLen 
-    | ArrayLen 
+    | Len 
+    | Head 
+    | Tail  
 
 
 data Binary 
-    = Arithm Arithm 
-    | ArithmInt ArithmInt 
-    | BoolAlg BoolAlg 
-    | Comp Comp 
-
-
-data Arithm 
-    = Add 
+    = Add
     | Sub 
     | Mul 
     | Div 
     | Pow 
-
-
-data ArithmInt 
-    = Mod
+    | Mod 
     | IntDiv 
-
-
-data BoolAlg 
-    = And 
+    | And 
     | Or 
     | Xor 
-
-
-data Comp 
-    = Eq 
+    | Eq 
     | NEq 
     | LEq 
     | GEq 
     | LTn 
     | GTn 
-
-
-data StrOp 
-    = StrConcat 
-    | StrComp StrComp 
-    | StrIndex 
-
-
-data StrComp 
-    = SEq 
-    | SNEq 
-    | SLEq 
-    | SGEq 
-    | SLTn 
-    | SGTn 
-
-
-data TupleOp 
-    = TupleIndex 
-    | TupleComp TupleComp 
-
-
-data TupleComp 
-    = TEq 
-    | TNEq 
-    | TLEq 
-    | TGEq 
-    | TLTn 
-    | TGTn 
-
-
-data ListOp 
-    = Cons 
-    | ListConcat 
-    | ListComp ListComp 
-
-
-data ListComp 
-    = LEQ 
-    | LNEq 
-    | LLEq 
-    | LGEq 
-    | LLTn 
-    | LGTn 
-
-
-data ArrayOp 
-    = ArraIndex Expr Expr 
-    | ArraySet Expr Expr Expr 
-
-
-data DictOp 
-    = DictKey Expr Expr 
-    | DictInsert Expr Expr Expr
-
-
-data FunOp 
-    = Apply 
+    | Concat 
+    | Cons 
+    | Get 
+    | Apply 
     | Compose 
+    deriving Eq 
+
+
+data Ternary 
+    = Set 
