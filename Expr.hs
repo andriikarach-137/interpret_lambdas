@@ -8,7 +8,7 @@ data Expr
     | Unary Unary Expr 
     | Binary Binary Expr Expr
     | Ternary Ternary Expr Expr Expr 
-    | Let Expr Expr Expr 
+    | Let String Expr Expr 
     | If Expr Expr Expr 
 
 
@@ -71,6 +71,7 @@ data Binary
     | Concat 
     | Cons 
     | Get 
+    | Project 
     | Apply 
     | Compose 
     deriving Eq 

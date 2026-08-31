@@ -26,13 +26,16 @@ data TypeClass
 
 
 typecheck :: Context -> Expr -> Either TypeError Type 
-typecheck c (Lit l)          = typecheckLit c l 
-typecheck _ (Def d)          = typecheckDef d 
-typecheck c (Var s)          = case Map.lookup s c of 
-    Just t                  -> Right t 
-    _                       -> Left $ TypeError ""
-typecheck c (Unary op e)     = typecheckUnary c op e 
-typecheck c (Binary op e e') = undefined 
+typecheck c (Lit l)               = typecheckLit c l 
+typecheck _ (Def d)               = typecheckDef d 
+typecheck c (Var s)               = case Map.lookup s c of 
+    Just t                       -> Right t 
+    _                            -> Left $ TypeError ""
+typecheck c (Unary op e)          = typecheckUnary c op e 
+typecheck c (Binary op e e')      = typecheckBinary c op e e' 
+typecheck c (Ternary op1 e e1 e2) = typecheckTernary c op1 e e1 e2 
+typecheck c (Let s e e')          = typecheckLet c s e e' 
+typecheck c (If e e' e'')         = typecheckIf c e e' e'' 
 
 
 typecheckLit :: Context -> Lit -> Either TypeError Type 
@@ -151,7 +154,21 @@ unaryType Tail   = (expectClass Inductive, \(TList t) -> t)
 
 
 typecheckBinary :: Context -> Binary -> Expr -> Expr -> Either TypeError Type 
-typecheckBinary = undefined 
+typecheckBinary c Project e i = do 
+    te <- typecheck c e 
+    ti <- typecheck c i 
+    expectType ti TInt 
+    case (te, i) of 
+        (TTuple ts, Lit (LInt n)) 
+          | n >= 0 && n < length ts -> Right (ts !! n)
+          | otherwise               -> Left $ TypeError ""
+        _                           -> Left $ TypeError ""
+typecheckBinary c op e e' = do 
+    te  <- typecheck c e 
+    te' <- typecheck c e'
+    let (check, result) = binaryType op 
+    check te te' 
+    Right $ result te te'  
 
 
 binaryType :: Binary -> (Type -> Type -> Either TypeError (), Type -> Type -> Type)
@@ -202,3 +219,32 @@ expectApply (TArrow t _) = expectType t
 
 expectCompose :: Type -> Type -> Either TypeError ()
 expectCompose (TArrow t t') (TArrow t1 t1') = expectType t1' t 
+
+
+typecheckTernary :: Context -> Ternary -> Expr -> Expr -> Expr -> Either TypeError Type 
+typecheckTernary c op e1 e2 e3 = do 
+    (t1, t2, t3) <- liftA3 (,,) (typecheck c e1) (typecheck c e2) (typecheck c e3)
+    case (op, t1, t2, t3) of 
+        (Set, TArray t, TInt, t') -> do 
+            expectType t t' 
+            Right $ TArray t 
+        (Set, TDict t t', k, v)   -> do 
+            expectType t k 
+            expectType t' v 
+            Right $ TDict t t' 
+        _                         -> Left $ TypeError ""
+
+
+typecheckLet :: Context -> String -> Expr -> Expr -> Either TypeError Type 
+typecheckLet c s e e' = do 
+    te <- typecheck c e 
+    let new = Map.insert s te c 
+    typecheck new e' 
+
+
+typecheckIf :: Context -> Expr -> Expr -> Expr -> Either TypeError Type 
+typecheckIf c e e' e'' = do  
+    (te, te', te'') <- liftA3 (,,) (typecheck c e) (typecheck c e') (typecheck c e'')
+    expectType te TBool 
+    expectType te' te'' 
+    Right te' 
