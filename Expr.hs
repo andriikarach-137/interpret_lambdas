@@ -7,7 +7,6 @@ data Expr
     | Var String
     | Unary Unary Expr 
     | Binary Binary Expr Expr
-    | Ternary Ternary Expr Expr Expr 
     | Let String Expr Expr 
     | If Expr Expr Expr 
 
@@ -20,8 +19,7 @@ data Lit
     | LString String 
     | LList [Expr] 
     | LListEmpty Expr
-    | LArray [Expr]
-    | LArrayEmpty Expr
+    | LArray [Expr] Int 
     | LTuple [Expr]
     | LDict [(Expr, Expr)]
     | LDictEmpty Expr Expr 
@@ -75,7 +73,3 @@ data Binary
     | Apply 
     | Compose 
     deriving Eq 
-
-
-data Ternary 
-    = Set 

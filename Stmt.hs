@@ -9,6 +9,7 @@ type Program = [Stmt]
 
 data Stmt
     = Assign String Expr 
+    | Set Expr Expr Expr 
     | Declare String Expr 
     | While Expr Program 
     | If Expr Program Program 
