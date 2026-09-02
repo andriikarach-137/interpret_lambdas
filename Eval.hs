@@ -2,7 +2,11 @@ module Eval where
 
 
 import Data.Array.ST(STArray)
-import Data.Array.ST qualified as A 
+import Data.Array.ST qualified as STA 
+
+import Data.Array(Array)
+import Data.Array qualified as A 
+
 import Control.Monad.ST 
 
 import Data.Map (Map)
@@ -23,10 +27,10 @@ data Val s
   | VBool Bool 
   | VInt Int 
   | VReal Double 
-  | VString (STArray s Int Char)
+  | VString (Array Int Char)
   | VList [Val s]
   | VArray (STArray s Int (Val s))
-  | VTuple (STArray s Int (Val s))
+  | VTuple (Array Int (Val s))
   | VDict (STArray s Int (Val s, Val s))
   | VArrow (Maybe (Env s)) String Expr 
 
@@ -40,12 +44,12 @@ evalLit _ LTrue              = pure $ Right $ VBool True
 evalLit _ LFalse             = pure $ Right $ VBool False 
 evalLit _ (LInt n)           = pure $ Right $ VInt n
 evalLit _ (LReal x)          = pure $ Right $ VReal x 
-evalLit _ (LString str)      = Right <$> VString <$> A.newListArray (0, length str - 1) str 
+evalLit _ (LString str)      = pure $ Right $ VString $ A.listArray (0, length str - 1) str 
 evalLit e (LList l)          = evalList e l  
 evalLit _ (LListEmpty _)     = pure $ Right $ VList []
 evalLit e (LArray a c)       = evalArray e a c 
 evalLit e (LTuple a)         = evalTuple e a 
-evalLit e (LDict ps)         = undefined 
+evalLit e (LDict ps)         = evalDict e ps 
 evalLit e (LDictEmpty e1 e2) = undefined 
 evalLit e (LArrow s e1 e2)   = undefined 
 
@@ -62,11 +66,11 @@ evalArray :: Env s -> [Expr] -> Int -> ST s (Either Error (Val s))
 evalArray e l c
   | c <= 0 || c < length l = pure $ Left $ EvalError ""
   | otherwise              = do 
-    arr     <- A.newArray (0, c - 1) VNothing :: ST s (STArray s Int (Val s))
+    arr     <- STA.newArray (0, c - 1) VNothing
     eitherL <- evalArrVals e l 
     case eitherL of
       Right l' -> do 
-        forM_ (zip [0..] l') (\(i, v) -> A.writeArray arr i v)
+        forM_ (zip [0..] l') (\(i, v) -> STA.writeArray arr i v)
         pure $ Right $ VArray arr 
       Left _ -> pure $ Left $ EvalError ""
 
@@ -75,5 +79,10 @@ evalTuple :: Env s -> [Expr] -> ST s (Either Error (Val s))
 evalTuple e l = do 
   eitherVs <- evalArrVals e l 
   case eitherVs of 
-    Right l' -> Right <$> VTuple <$> A.newListArray (0, length l' - 1) l' 
+    Right l' -> pure $ Right $ VTuple $ A.listArray (0, length l' - 1) l' 
     Left _   -> pure $ Left $ EvalError ""
+
+
+evalDict :: Env s -> [(Expr, Expr)] -> ST s (Either Error (Val s))
+evalDict e ps = undefined 
+  
