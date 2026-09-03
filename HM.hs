@@ -13,6 +13,8 @@ import Data.STRef
 import Expr 
 import Eval 
 import GHC.Base (RuntimeRep(Int16Rep))
+import GHC.Arr (negRange)
+import Data.List (foldl')
 
 
 data HashMap s = HashMap
@@ -24,18 +26,24 @@ data HashMap s = HashMap
 
 
 defaultHash :: Val s -> Word64 
-defaultHash VNothing    = 0 
-defaultHash (VBool b)   = if b == True then 1 else 0 
-defaultHash (VInt n)    = mix $ fromIntegral n 
-defaultHash (VReal x)   = mix $ castDoubleToWord64 x 
-defaultHash (VString s) = hashVString s 
+defaultHash (VBool b)      = if b then 1 else 0 
+defaultHash (VInt n)       = mix $ fromIntegral n 
+defaultHash (VReal x)      = mix $ castDoubleToWord64 x 
+defaultHash (VList l)      = foldl' (\h x -> h * 31 + defaultHash x) 0 l 
+defaultHash (VString s)    = hashArr (fromIntegral . ord) s 
+defaultHash (VTuple t)     = hashArr defaultHash t 
+defaultHash VNothing       = error "VNothing value is unhashable: Cannot hash value representing undeclared data"
+defaultHash (VArray _)     = error "VArray value is unhashable: Cannot hash value from an array object, as it has no equality constraint"
+defaultHash (VDict _)      = error "VDict value is unhashable: Cannot hash value from a dictionary object, as it has no equality constraint"
+defaultHash (VArrow _ _ _) = error "VArrow value is unhashable: Cannot hash value from a function object, as it has no equality constraint (Halting Problem :)"
+defaultHash _              = error "Value is unhashable, (Left for future development :)"
 
 
-hashVString :: Array Int Char -> Word64 
-hashVString arr = let (hi, low) = A.bounds arr in foldl step 0 [hi..low]
+hashArr :: (a -> Word64) -> Array Int a -> Word64 
+hashArr f arr = let (lo, hi) = A.bounds arr in foldl' step 0 [lo..hi]
   where
     step :: Word64 -> Int -> Word64 
-    step i n = i * 31 + fromIntegral (ord (arr A.! n)) 
+    step i n = i * 31 + f (arr A.! n)
 
 
 mix :: Word64 -> Word64
