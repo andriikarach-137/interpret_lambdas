@@ -33,6 +33,7 @@ data Val s
   | VTuple (Array Int (Val s))
   | VDict (STArray s Int (Val s, Val s))
   | VArrow (Maybe (Env s)) String Expr 
+  deriving Eq 
 
 
 eval :: Env s -> Expr -> ST s (Either Error (Val s))
@@ -84,5 +85,5 @@ evalTuple e l = do
 
 
 evalDict :: Env s -> [(Expr, Expr)] -> ST s (Either Error (Val s))
-evalDict e ps = undefined 
+evalDict e ps = undefined
   

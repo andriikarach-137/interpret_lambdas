@@ -9,19 +9,22 @@ import GHC.Float (castDoubleToWord64)
 import Data.Array(Array)
 import Data.Array qualified as A 
 import Data.Array.ST(STArray)
+import Data.Array.ST qualified as STA 
 import Data.STRef
 import Expr 
 import Eval 
 import GHC.Base (RuntimeRep(Int16Rep))
-import GHC.Arr (negRange)
+import GHC.Arr (negRange, newSTArray)
 import Data.List (foldl')
 
+initialCapacity :: Int 
+initialCapacity = 16 
 
 data HashMap s = HashMap
-  { buckets  :: STArray s Int [(Val s, Val s)]
+  { buckets  :: STRef s (STArray s Int [(Val s, Val s)])
   , size     :: STRef s Int 
   , capacity :: STRef s Int 
-  , hash     :: Val s -> Int 
+  , hash     :: Val s -> Word64 
   }
 
 
@@ -36,7 +39,6 @@ defaultHash VNothing       = error "VNothing value is unhashable: Cannot hash va
 defaultHash (VArray _)     = error "VArray value is unhashable: Cannot hash value from an array object, as it has no equality constraint"
 defaultHash (VDict _)      = error "VDict value is unhashable: Cannot hash value from a dictionary object, as it has no equality constraint"
 defaultHash (VArrow _ _ _) = error "VArrow value is unhashable: Cannot hash value from a function object, as it has no equality constraint (Halting Problem :)"
-defaultHash _              = error "Value is unhashable, (Left for future development :)"
 
 
 hashArr :: (a -> Word64) -> Array Int a -> Word64 
@@ -53,3 +55,56 @@ mix w =
       w3 = w2 `xor` (w2 `shiftR` 33)
       w4 = w3 * 0xb21347861234ABD7 
   in w4 `xor` (w4 `shiftR` 29) 
+
+
+empty :: Maybe Int -> (Val s -> Word64) -> ST s (HashMap s) 
+empty n h = do 
+  let cap = maybe initialCapacity id n 
+  size     <- newSTRef 0 
+  capacity <- newSTRef cap
+  arr      <- STA.newArray (0, cap - 1) [(VNothing, VNothing)]
+  buckets  <- newSTRef arr 
+  pure $ HashMap buckets size capacity h 
+
+
+index :: HashMap s -> Val s -> ST s Int 
+index hm k = do 
+  cap  <- readSTRef $ capacity hm
+  pure $ (fromIntegral $ abs $ hash hm $ k) `mod` cap  
+
+
+lookup :: HashMap s -> Val s -> ST s (Maybe (Val s))
+lookup hm k = do 
+  i      <- index hm k 
+  arr    <- readSTRef $ buckets hm 
+  bucket <- STA.readArray arr i 
+  pure $ Prelude.lookup k bucket 
+
+
+insert :: HashMap s -> Val s -> Val s -> ST s ()
+insert hm k v = do 
+  siz <- readSTRef $ size hm
+  cap <- readSTRef $ capacity hm
+  when (realToFrac siz / realToFrac cap >= 0.75) $ resize hm
+  i   <- index hm k  
+  arr <- readSTRef $ buckets hm 
+  l   <- STA.readArray arr i 
+  let new = (k, v) : l 
+  STA.writeArray arr i new  
+  modifySTRef' (size hm) (+ 1)
+
+
+resize :: HashMap s -> ST s ()
+resize hm = do 
+  cap <- readSTRef $ capacity hm 
+  let newCap = 2 * cap 
+  old <- readSTRef $ buckets hm 
+  l   <- STA.getElems $ old  
+  new <- STA.newArray (0, newCap - 1) [] :: ST s (STArray s Int [(Val s, Val s)])
+  writeSTRef (buckets hm) new 
+  writeSTRef (capacity hm) newCap 
+  forM_ (concat l) (\(k, v) -> insert hm k v)
+
+
+fromList :: (Val s -> Int) -> [(Val s, Val s)] -> ST s (HashMap s)
+fromList f l = undefined

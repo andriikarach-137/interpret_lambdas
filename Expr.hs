@@ -9,6 +9,7 @@ data Expr
     | Binary Binary Expr Expr
     | Let String Expr Expr 
     | If Expr Expr Expr 
+    deriving Eq 
 
 
 data Lit 
@@ -24,6 +25,7 @@ data Lit
     | LDict [(Expr, Expr)]
     | LDictEmpty Expr Expr 
     | LArrow String Expr Expr
+    deriving Eq 
 
 
 data Def 
@@ -36,6 +38,7 @@ data Def
     | DTuple [Def]
     | DDict Def Def
     | DArrow Def Def 
+    deriving Eq 
 
 
 data Unary 
@@ -47,6 +50,7 @@ data Unary
     | Len 
     | Head 
     | Tail  
+    deriving Eq 
 
 
 data Binary 
