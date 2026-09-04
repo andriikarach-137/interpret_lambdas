@@ -62,7 +62,7 @@ empty n h = do
   let cap = maybe initialCapacity id n 
   size     <- newSTRef 0 
   capacity <- newSTRef cap
-  arr      <- STA.newArray (0, cap - 1) [(VNothing, VNothing)]
+  arr      <- STA.newArray (0, cap - 1) []
   buckets  <- newSTRef arr 
   pure $ HashMap buckets size capacity h 
 
@@ -81,15 +81,15 @@ lookup hm k = do
   pure $ Prelude.lookup k bucket 
 
 
-insert :: HashMap s -> Val s -> Val s -> ST s ()
-insert hm k v = do 
+insert :: HashMap s -> (Val s, Val s) -> ST s ()
+insert hm p = do 
   siz <- readSTRef $ size hm
   cap <- readSTRef $ capacity hm
   when (realToFrac siz / realToFrac cap >= 0.75) $ resize hm
-  i   <- index hm k  
+  i   <- index hm $ fst p 
   arr <- readSTRef $ buckets hm 
   l   <- STA.readArray arr i 
-  let new = (k, v) : l 
+  let new = p : l 
   STA.writeArray arr i new  
   modifySTRef' (size hm) (+ 1)
 
@@ -103,8 +103,11 @@ resize hm = do
   new <- STA.newArray (0, newCap - 1) [] :: ST s (STArray s Int [(Val s, Val s)])
   writeSTRef (buckets hm) new 
   writeSTRef (capacity hm) newCap 
-  forM_ (concat l) (\(k, v) -> insert hm k v)
+  forM_ (concat l) $ insert hm
 
 
-fromList :: (Val s -> Int) -> [(Val s, Val s)] -> ST s (HashMap s)
-fromList f l = undefined
+fromList :: (Val s -> Word64) -> [(Val s, Val s)] -> ST s (HashMap s)
+fromList f l = do 
+  hm       <- empty Nothing f
+  forM_ l (insert hm)
+  pure hm 
