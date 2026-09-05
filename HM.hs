@@ -16,6 +16,7 @@ import Eval
 import GHC.Base (RuntimeRep(Int16Rep))
 import GHC.Arr (negRange, newSTArray)
 import Data.List (foldl')
+import Data.Monoid(Any(..))
 
 initialCapacity :: Int 
 initialCapacity = 16 
@@ -81,17 +82,24 @@ lookup hm k = do
   pure $ Prelude.lookup k bucket 
 
 
+insertOrReplace :: Eq k => (k, v) -> [(k, v)] -> (Any, [(k, v)]) 
+insertOrReplace p []          = (Any False, [p])
+insertOrReplace p@(k, _) (p'@(k', _):xs)
+  | k == k'   = (Any True, p:xs)  
+  | otherwise = (:) <$> (Any False, p') <*> insertOrReplace p xs 
+
+
 insert :: HashMap s -> (Val s, Val s) -> ST s ()
 insert hm p = do 
-  siz <- readSTRef $ size hm
   cap <- readSTRef $ capacity hm
-  when (realToFrac siz / realToFrac cap >= 0.75) $ resize hm
   i   <- index hm $ fst p 
   arr <- readSTRef $ buckets hm 
   l   <- STA.readArray arr i 
-  let new = p : l 
+  let (found, new) = insertOrReplace p l 
   STA.writeArray arr i new  
-  modifySTRef' (size hm) (+ 1)
+  when (not . getAny $ found) $ modifySTRef' (size hm) (+ 1)
+  siz <- readSTRef $ size hm
+  when (realToFrac siz / realToFrac cap >= 0.75) $ resize hm
 
 
 resize :: HashMap s -> ST s ()
@@ -108,6 +116,6 @@ resize hm = do
 
 fromList :: (Val s -> Word64) -> [(Val s, Val s)] -> ST s (HashMap s)
 fromList f l = do 
-  hm       <- empty Nothing f
+  hm  <- empty Nothing f
   forM_ l (insert hm)
   pure hm 
