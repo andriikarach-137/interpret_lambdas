@@ -12,34 +12,21 @@ import Data.Array.ST(STArray)
 import Data.Array.ST qualified as STA 
 import Data.STRef
 import Expr 
-import Eval 
 import GHC.Base (RuntimeRep(Int16Rep))
 import GHC.Arr (negRange, newSTArray)
 import Data.List (foldl')
 import Data.Monoid(Any(..))
 
+
 initialCapacity :: Int 
 initialCapacity = 16 
 
-data HashMap s = HashMap
-  { buckets  :: STRef s (STArray s Int [(Val s, Val s)])
+data HashMap s k v = HashMap
+  { buckets  :: STRef s (STArray s Int [(k, v)])
   , size     :: STRef s Int 
   , capacity :: STRef s Int 
-  , hash     :: Val s -> Word64 
+  , hash     :: k -> Word64 
   }
-
-
-defaultHash :: Val s -> Word64 
-defaultHash (VBool b)      = if b then 1 else 0 
-defaultHash (VInt n)       = mix $ fromIntegral n 
-defaultHash (VReal x)      = mix $ castDoubleToWord64 x 
-defaultHash (VList l)      = foldl' (\h x -> h * 31 + defaultHash x) 0 l 
-defaultHash (VString s)    = hashArr (fromIntegral . ord) s 
-defaultHash (VTuple t)     = hashArr defaultHash t 
-defaultHash VNothing       = error "VNothing value is unhashable: Cannot hash value representing undeclared data"
-defaultHash (VArray _)     = error "VArray value is unhashable: Cannot hash value from an array object, as it has no equality constraint"
-defaultHash (VDict _)      = error "VDict value is unhashable: Cannot hash value from a dictionary object, as it has no equality constraint"
-defaultHash (VArrow _ _ _) = error "VArrow value is unhashable: Cannot hash value from a function object, as it has no equality constraint (Halting Problem :)"
 
 
 hashArr :: (a -> Word64) -> Array Int a -> Word64 
@@ -58,7 +45,7 @@ mix w =
   in w4 `xor` (w4 `shiftR` 29) 
 
 
-empty :: Maybe Int -> (Val s -> Word64) -> ST s (HashMap s) 
+empty :: Maybe Int -> (k -> Word64) -> ST s (HashMap s k v) 
 empty n h = do 
   let cap = maybe initialCapacity id n 
   size     <- newSTRef 0 
@@ -68,13 +55,13 @@ empty n h = do
   pure $ HashMap buckets size capacity h 
 
 
-index :: HashMap s -> Val s -> ST s Int 
+index :: HashMap s k v -> k -> ST s Int 
 index hm k = do 
   cap  <- readSTRef $ capacity hm
   pure $ (fromIntegral $ abs $ hash hm $ k) `mod` cap  
 
 
-lookup :: HashMap s -> Val s -> ST s (Maybe (Val s))
+lookup :: Eq k => HashMap s k v -> k -> ST s (Maybe v)
 lookup hm k = do 
   i      <- index hm k 
   arr    <- readSTRef $ buckets hm 
@@ -89,7 +76,7 @@ insertOrReplace p@(k, _) (p'@(k', _):xs)
   | otherwise = (:) <$> (Any False, p') <*> insertOrReplace p xs 
 
 
-insert :: HashMap s -> (Val s, Val s) -> ST s ()
+insert :: Eq k => HashMap s k v -> (k, v) -> ST s ()
 insert hm p = do 
   cap <- readSTRef $ capacity hm
   i   <- index hm $ fst p 
@@ -102,19 +89,19 @@ insert hm p = do
   when (realToFrac siz / realToFrac cap >= 0.75) $ resize hm
 
 
-resize :: HashMap s -> ST s ()
+resize :: Eq k => HashMap s k v -> ST s ()
 resize hm = do 
   cap <- readSTRef $ capacity hm 
   let newCap = 2 * cap 
   old <- readSTRef $ buckets hm 
   l   <- STA.getElems $ old  
-  new <- STA.newArray (0, newCap - 1) [] :: ST s (STArray s Int [(Val s, Val s)])
+  new <- STA.newArray (0, newCap - 1) [] :: ST s (STArray s Int [(k, v)])
   writeSTRef (buckets hm) new 
   writeSTRef (capacity hm) newCap 
   forM_ (concat l) $ insert hm
 
 
-fromList :: (Val s -> Word64) -> [(Val s, Val s)] -> ST s (HashMap s)
+fromList :: Eq k => (k -> Word64) -> [(k, v)] -> ST s (HashMap s k v)
 fromList f l = do 
   hm  <- empty Nothing f
   forM_ l (insert hm)

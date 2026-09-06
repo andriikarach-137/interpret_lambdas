@@ -12,28 +12,13 @@ import Control.Monad.ST
 import Data.Map (Map)
 import Data.Map qualified as Map 
 
-
 import Expr 
-import Error 
+import Error
 import Type 
 import Control.Monad (forM_)
-
-
-type Env s = Map String (Val s)
-
-
-data Val s
-  = VNothing 
-  | VBool Bool 
-  | VInt Int 
-  | VReal Double 
-  | VString (Array Int Char)
-  | VList [Val s]
-  | VArray (STArray s Int (Val s))
-  | VTuple (Array Int (Val s))
-  | VDict (STArray s Int (Val s, Val s))
-  | VArrow (Maybe (Env s)) String Expr 
-  deriving Eq 
+import Value 
+import HM 
+import GHCi.Message (EvalExpr(EvalApp))
 
 
 eval :: Env s -> Expr -> ST s (Either Error (Val s))
@@ -85,5 +70,13 @@ evalTuple e l = do
 
 
 evalDict :: Env s -> [(Expr, Expr)] -> ST s (Either Error (Val s))
-evalDict e ps = undefined
-  
+evalDict e ps = do 
+  let (ks, vs) = unzip ps 
+  ks' <- traverse (eval e) ks 
+  vs' <- traverse (eval e) vs 
+  let ks'' = sequence ks' 
+  let vs'' = sequence vs' 
+  let ps' = liftA2 zip ks'' vs'' 
+  case ps' of 
+    Right ps'' -> Right . VDict <$> fromList defaultHash ps'' 
+    _          -> pure $ Left $ EvalError ""
