@@ -27,7 +27,7 @@ data Val s
   | VArray (STArray s Int (Val s))
   | VTuple (Array Int (Val s))
   | VDict (HashMap s (Val s) (Val s))
-  | VArrow (Maybe (Env s)) String Expr 
+  | VArrow String Expr 
 
 
 defaultHash :: Val s -> Word64 
@@ -40,17 +40,17 @@ defaultHash (VTuple t)     = hashArr defaultHash t
 defaultHash VNothing       = error "VNothing value is unhashable: Cannot hash value representing undeclared data"
 defaultHash (VArray _)     = error "VArray value is unhashable: Cannot hash value from an array object, as it has no equality constraint"
 defaultHash (VDict _)      = error "VDict value is unhashable: Cannot hash value from a dictionary object, as it has no equality constraint"
-defaultHash (VArrow _ _ _) = error "VArrow value is unhashable: Cannot hash value from a function object, as it has no equality constraint (Halting Problem :)"
+defaultHash (VArrow _ _)   = error "VArrow value is unhashable: Cannot hash value from a function object, as it has no equality constraint (Halting Problem :)"
 
 
 instance Eq (Val s) where
-    VNothing == VNothing = True 
-    VBool b == VBool b' = b == b' 
-    VInt n == VInt n' = n == n' 
-    VReal x == VReal x' = x == x'
-    VList l == VList l' = l == l' 
-    VString s == VString s' = s == s' 
-    VTuple t == VTuple t' = t == t' 
-    VArray _ == VArray _ = error "VArray is not equatable"
-    VDict _ == VDict _ = error "VDict is not equatable" 
-    VArrow _ _ _ == VArrow _ _ _ = error "VArrow is not equatable"
+    VNothing == VNothing     = True 
+    VBool b == VBool b'      = b == b' 
+    VInt n == VInt n'        = n == n' 
+    VReal x == VReal x'      = x == x'
+    VList l == VList l'      = l == l' 
+    VString s == VString s'  = s == s' 
+    VTuple t == VTuple t'    = t == t' 
+    VArray _ == VArray _     = error "VArray is not equatable"
+    VDict _ == VDict _       = error "VDict is not equatable" 
+    VArrow _ _ == VArrow _ _ = error "VArrow is not equatable"

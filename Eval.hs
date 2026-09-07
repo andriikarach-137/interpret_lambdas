@@ -22,7 +22,12 @@ import GHCi.Message (EvalExpr(EvalApp))
 
 
 eval :: Env s -> Expr -> ST s (Either Error (Val s))
-eval env (Lit l) = evalLit env l 
+eval env (Lit l)      = evalLit env l 
+eval env (Def d)      = error "Cannot evaluate default values"
+eval env (Var x)      = case Map.lookup x env of 
+  Just y             -> pure $ Right y 
+  Nothing            -> pure $ Left $ EvalError ""
+eval env (Unary op e) = evalUnary env op e   
 
 
 evalLit :: Env s -> Lit -> ST s (Either Error (Val s))
@@ -36,8 +41,8 @@ evalLit _ (LListEmpty _)     = pure $ Right $ VList []
 evalLit e (LArray a c)       = evalArray e a c 
 evalLit e (LTuple a)         = evalTuple e a 
 evalLit e (LDict ps)         = evalDict e ps 
-evalLit e (LDictEmpty e1 e2) = undefined 
-evalLit e (LArrow s e1 e2)   = undefined 
+evalLit e (LDictEmpty e1 e2) = Right . VDict <$> empty Nothing defaultHash 
+evalLit _ (LArrow s _ e2)    = pure $ Right $ VArrow s e2   
 
 
 evalList :: Env s -> [Expr] -> ST s (Either Error (Val s))
@@ -80,3 +85,7 @@ evalDict e ps = do
   case ps' of 
     Right ps'' -> Right . VDict <$> fromList defaultHash ps'' 
     _          -> pure $ Left $ EvalError ""
+
+
+evalUnary :: Env s -> Unary -> Expr -> ST s (Either Error (Val s))
+evalUnary = undefined 
