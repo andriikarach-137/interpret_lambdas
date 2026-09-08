@@ -24,10 +24,17 @@ data Val s
   | VReal Double 
   | VString (Array Int Char)
   | VList [Val s]
-  | VArray (STArray s Int (Val s))
+  | VArray (MutArr s (Val s))
   | VTuple (Array Int (Val s))
   | VDict (HashMap s (Val s) (Val s))
   | VArrow String Expr 
+
+  
+data MutArr s i = MutArr
+  {
+    size :: Int
+  , content :: STArray s Int i 
+  }
 
 
 defaultHash :: Val s -> Word64 

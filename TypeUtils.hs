@@ -5,6 +5,7 @@ import Type
 import Error 
 import Expr 
 import Control.Applicative
+import Value 
 
 
 data TypeClass 
@@ -22,7 +23,7 @@ typeClass :: Type -> [TypeClass]
 typeClass TInt         = [Equatable, Comparable, Numeric, Integral] 
 typeClass TReal        = [Equatable, Comparable, Numeric]
 typeClass TBool        = [Equatable, BoolLike]
-typeClass TString      = [Equatable, Comparable]
+typeClass TString      = [Equatable, Comparable, Collectable]
 typeClass (TList t)    = [Equatable | hasClass Equatable t] ++ [Comparable | hasClass Comparable t] ++ [Inductive, Collectable]
 typeClass (TArray t)   = [Collectable]
 typeClass (TTuple ts)  = [Equatable | all (hasClass Equatable) ts] ++ [Comparable | all (hasClass Comparable) ts] ++ [Collectable]

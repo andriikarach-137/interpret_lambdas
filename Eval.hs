@@ -18,7 +18,7 @@ import Type
 import Control.Monad (forM_)
 import Value 
 import HM 
-import GHCi.Message (EvalExpr(EvalApp))
+import Data.STRef 
 
 
 eval :: Env s -> Expr -> ST s (Either Error (Val s))
@@ -62,7 +62,7 @@ evalArray e l c
     case eitherL of
       Right l' -> do 
         forM_ (zip [0..] l') (\(i, v) -> STA.writeArray arr i v)
-        pure $ Right $ VArray arr 
+        pure $ Right $ VArray (MutArr (length l) arr)
       Left _ -> pure $ Left $ EvalError ""
 
 
@@ -79,8 +79,7 @@ evalDict e ps = do
   let (ks, vs) = unzip ps 
   ks' <- traverse (eval e) ks 
   vs' <- traverse (eval e) vs 
-  let ks'' = sequence ks' 
-  let vs'' = sequence vs' 
+  let (ks'', vs'') = (sequence ks', sequence vs') 
   let ps' = liftA2 zip ks'' vs'' 
   case ps' of 
     Right ps'' -> Right . VDict <$> fromList defaultHash ps'' 
@@ -88,4 +87,57 @@ evalDict e ps = do
 
 
 evalUnary :: Env s -> Unary -> Expr -> ST s (Either Error (Val s))
-evalUnary = undefined 
+evalUnary env Neg e    = (eval env e) >>= either (pure . Left) evalNegate
+evalUnary env Not e    = (eval env e) >>= (\re -> pure $ re >>= (\(VBool b) -> Right $ VBool $ not b))  
+evalUnary env ToInt e  = (eval env e) >>= either (pure . Left) evalToInt
+evalUnary env ToReal e = (eval env e) >>= either (pure . Left) evalToReal 
+evalUnary env Fact e   = (eval env e) >>= either (pure . Left) evalFact 
+evalUnary env Len e    = (eval env e) >>= either (pure . Left) evalLen 
+evalUnary env Head e   = (eval env e) >>= either (pure . Left) evalHead 
+evalUnary env Tail e   = (eval env e) >>= either (pure . Left) evalTail 
+
+
+evalNegate :: Val s -> ST s (Either Error (Val s))
+evalNegate (VInt n)  = pure $ Right $ VInt $ negate n 
+evalNegate (VReal x) = pure $ Right $ VReal $ negate x 
+evalNegate _         = undefined 
+
+
+evalToInt :: Val s -> ST s (Either Error (Val s))
+evalToInt n@(VInt _) = pure $ Right n 
+evalToInt (VReal x)  = pure $ Right $ VInt $ truncate x 
+evalToInt _          = undefined 
+
+
+evalToReal :: Val s -> ST s (Either Error (Val s))
+evalToReal (VInt n)    = pure $ Right $ VReal $ fromIntegral n 
+evalToReal x@(VReal _) = pure $ Right x 
+evalToReal _           = undefined 
+
+
+evalFact :: Val s -> ST s (Either Error (Val s))
+evalFact (VInt n)
+  | n < 0     = pure $ Left $ EvalError ""
+  | otherwise = pure $ Right $ VInt $ product [1..n]
+evalFact _    = undefined 
+
+
+evalLen :: Val s -> ST s (Either Error (Val s))
+evalLen (VString a) = pure $ Right $ VInt $ length a 
+evalLen (VList l)   = pure $ Right $ VInt $ length l  
+evalLen (VArray a)  = pure $ Right $ VInt $ Value.size a  
+evalLen (VTuple a)  = pure $ Right $ VInt $ length a 
+evalLen (VDict d)   = readSTRef (HM.size d) >>= (\n -> pure $ Right $ VInt n) 
+evalLen _           = undefined 
+
+
+evalHead :: Val s -> ST s (Either Error (Val s))
+evalHead (VList [])    = pure $ Left $ EvalError ""
+evalHead (VList (x:_)) = pure $ Right $ x
+evalHead _             = undefined 
+
+
+evalTail :: Val s -> ST s (Either Error (Val s))
+evalTail (VList [])     = pure $ Right $ VList []
+evalTail (VList (_:xs)) = pure $ Right $ VList xs 
+evalTail _              = undefined 
