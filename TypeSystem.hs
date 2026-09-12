@@ -15,49 +15,87 @@ import Data.Map qualified as Map
 type Context = Map String Type 
 
 
-typecheck :: Context -> Expr -> Either Error Type 
-typecheck c (Lit l)               = typecheckLit c l 
-typecheck _ (Def d)               = typecheckDef d 
-typecheck c (Var s)               = case Map.lookup s c of 
-    Just t                       -> Right t 
-    _                            -> Left $ TypeError ""
-typecheck c (Unary op e)          = typecheckUnary c op e 
-typecheck c (Binary op e e')      = typecheckBinary c op e e' 
-typecheck c (Let s e e')          = typecheckLet c s e e' 
-typecheck c (If e e' e'')         = typecheckIf c e e' e'' 
+typeOf :: TypedExpr -> Type 
+typeOf (TLit t _)        = t 
+typeOf (TDef t _)        = t 
+typeOf (TVar t _)        = t 
+typeOf (TUnary t _ _)    = t 
+typeOf (TBinary t _ _ _) = t
+typeOf (TLet t _ _ _)    = t 
+typeOf (TIf t _ _ _)     = t 
 
 
-typecheckLit :: Context -> Lit -> Either Error Type 
-typecheckLit _ LTrue             = Right TBool
-typecheckLit _ LFalse            = Right TBool 
-typecheckLit _ (LInt _)          = Right TInt 
-typecheckLit _ (LReal _)         = Right TReal 
-typecheckLit _ (LString _)       = Right TString 
-typecheckLit c (LList l)         = TList <$> typecheckList c l 
-typecheckLit c (LListEmpty e)    = TList <$> typecheck c e 
-typecheckLit c (LArray a _)      = TArray <$> typecheckList c a 
-typecheckLit c (LTuple t)        = TTuple <$> traverse (typecheck c) t  
-typecheckLit c (LDict d)         = uncurry TDict <$> typecheckDict c d
-typecheckLit c (LDictEmpty e e') = TDict <$> typecheck c e <*> typecheck c e'  
-typecheckLit c (LArrow s te e)   = uncurry TArrow <$> typecheckArrow c s te e 
+data TypedExpr
+    = TLit Type Lit 
+    | TCList Type [TypedExpr]
+    | TCArray Type [TypedExpr] Int 
+    | TCTuple Type [TypedExpr]
+    | TCDict Type [(TypedExpr, TypedExpr)] 
+    | TDef Type Def 
+    | TVar Type String 
+    | TUnary Type Unary Expr 
+    | TBinary Type Binary Expr Expr 
+    | TLet Type String Expr Expr 
+    | TIf Type Expr Expr Expr 
+    | TArrow Type String Type TypedExpr 
+    deriving Eq
 
 
+typecheck :: Context -> Expr -> Either Error TypedExpr 
+typecheck _ (Lit l)  = typecheckLit l 
+typecheck c (Col xs) = typecheckCol c xs  
 
-typecheckList :: Context -> [Expr] -> Either Error Type 
-typecheckList c (e:es) = do 
-    te <- typecheck c e 
-    tes <- traverse (typecheck c) es 
-    if all (== te) tes then Right te else Left $ TypeError ""
-typecheckList _ _ = undefined  
- 
 
+typecheckLit :: Lit -> Either Error TypedExpr 
+typecheckLit x@LTrue       = Right $ TLit TBool x  
+typecheckLit x@LFalse      = Right $ TLit TBool x 
+typecheckLit x@(LInt _)    = Right $ TLit TInt x 
+typecheckLit x@(LReal _)   = Right $ TLit TReal x 
+typecheckLit x@(LString _) = Right $ TLit TString x 
+
+
+typecheckCol :: Context -> Col -> Either Error TypedExpr 
+typecheckCol c (CList l)         = uncurry TCList <$> typecheckElems TList c l
+typecheckCol c (CListEmpty e)    = TCList <$> (TList . typeOf <$> typecheck c e) <*> pure []
+typecheckCol c (CArray l i)      = uncurry TCArray <$> typecheckElems TArray c l <*> pure i 
+typecheckCol c (CTuple l)        = uncurry TCTuple <$> typecheckTuple c l
+typecheckCol c (CDict l)         = uncurry TCDict <$> typecheckDict c l 
+typecheckCol c (CDictEmpty e e') = TCDict <$> (TDict <$> (typeOf <$> typecheck c e) <*> (typeOf <$> typecheck c e')) <*> pure []
+
+
+typecheckElems :: (Type -> Type) -> Context -> [Expr] -> Either Error (Type, [TypedExpr]) 
+typecheckElems f c (x:xs) = do 
+    tex  <- typecheck c x 
+    texs <- traverse (typecheck c) xs 
+    let (tx, txs) = (typeOf tex, typeOf <$> texs)
+    if all (== tx) txs then Right $ (f tx, tex:texs) else Left $ TypeError ""
+
+
+typecheckTuple :: Context -> [Expr] -> Either Error (Type, [TypedExpr])
+typecheckTuple c xs = (\ts -> (TTuple $ typeOf <$> ts, ts)) <$> traverse (typecheck c) xs 
+
+
+typecheckDict :: Context -> [(Expr, Expr)] -> Either Error (Type, [(TypedExpr, TypedExpr)])
+typecheckDict c ((k, v):xs) = do 
+    (tek, tev) <- (,) <$> typecheck c k <*> typecheck c v  
+    let (tk, tv) = (typeOf tek, typeOf tev)
+    let (kxs, vxs) = unzip xs 
+    (tekxs, tevxs) <- (,) <$> traverse (typecheck c) kxs <*> traverse (typecheck c) vxs  
+    let (tkxs, tvxs) = (typeOf <$> tekxs, typeOf <$> tevxs)
+    if all (== tk) tkxs && all (== tv) tvxs then do 
+        expectClass Equatable $ tk 
+        Right (TDict tk tv, zip (tek:tekxs) (tev:tevxs))
+    else Left $ TypeError ""
+
+
+{-
 typecheckDict :: Context -> [(Expr, Expr)] -> Either Error (Type, Type)
 typecheckDict c ((e,e'):es) = do 
     (te, te') <- (,) <$> typecheck c e <*> typecheck c e' 
     let (es1, es2) = unzip es
     (tes, tes') <- (,) <$> traverse (typecheck c) es1 <*> traverse (typecheck c) es2 
     if all (== te) tes && all (== te') tes' then do
-        expectClass Equatable te 
+        expectClass Equatable $ type_ te 
         Right (te, te') 
     else Left $ TypeError ""  
 typecheckDict _ _ = undefined 
@@ -124,3 +162,4 @@ typecheckIf c e e' e'' = do
     expectType te TBool 
     expectType te' te'' 
     Right te'
+-}

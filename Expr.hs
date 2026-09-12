@@ -3,12 +3,14 @@ module Expr where
 
 data Expr 
     = Lit Lit 
+    | Col Col 
     | Def Def 
     | Var String
     | Unary Unary Expr 
     | Binary Binary Expr Expr
     | Let String Expr Expr 
     | If Expr Expr Expr 
+    | Arrow String Expr Expr
     deriving Eq 
 
 
@@ -18,15 +20,17 @@ data Lit
     | LInt Int 
     | LReal Double 
     | LString String 
-    | LList [Expr] 
-    | LListEmpty Expr
-    | LArray [Expr] Int 
-    | LTuple [Expr]
-    | LDict [(Expr, Expr)]
-    | LDictEmpty Expr Expr 
-    | LArrow String Expr Expr
     deriving Eq 
 
+
+data Col
+    = CList [Expr]
+    | CListEmpty Expr 
+    | CArray [Expr] Int 
+    | CTuple [Expr]
+    | CDict [(Expr, Expr)]
+    | CDictEmpty Expr Expr 
+    deriving Eq 
 
 data Def 
     = DBool 
