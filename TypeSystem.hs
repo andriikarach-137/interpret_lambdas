@@ -17,12 +17,17 @@ type Context = Map String Type
 
 typeOf :: TypedExpr -> Type 
 typeOf (TLit t _)        = t 
+typeOf (TCList t _)      = t 
+typeOf (TCArray t _ _)   = t 
+typeOf (TCTuple t _)     = t
+typeOf (TCDict t _)      = t 
 typeOf (TDef t _)        = t 
 typeOf (TVar t _)        = t 
 typeOf (TUnary t _ _)    = t 
 typeOf (TBinary t _ _ _) = t
 typeOf (TLet t _ _ _)    = t 
 typeOf (TIf t _ _ _)     = t 
+typeOf (TEArrow t _ _)   = t 
 
 
 data TypedExpr
@@ -33,17 +38,24 @@ data TypedExpr
     | TCDict Type [(TypedExpr, TypedExpr)] 
     | TDef Type Def 
     | TVar Type String 
-    | TUnary Type Unary Expr 
-    | TBinary Type Binary Expr Expr 
-    | TLet Type String Expr Expr 
-    | TIf Type Expr Expr Expr 
-    | TArrow Type String Type TypedExpr 
+    | TUnary Type Unary TypedExpr 
+    | TBinary Type Binary TypedExpr TypedExpr 
+    | TLet Type String TypedExpr TypedExpr 
+    | TIf Type TypedExpr TypedExpr TypedExpr 
+    | TEArrow Type String TypedExpr 
     deriving Eq
 
 
 typecheck :: Context -> Expr -> Either Error TypedExpr 
-typecheck _ (Lit l)  = typecheckLit l 
-typecheck c (Col xs) = typecheckCol c xs  
+typecheck _ (Lit l)          = typecheckLit l 
+typecheck c (Col xs)         = typecheckCol c xs  
+typecheck _ (Def d)          = flip TDef d <$> typecheckDef d 
+typecheck c (Var s)          = maybe (Left $ TypeError "") (Right . flip TVar s) (Map.lookup s c) 
+typecheck c (Unary op e)     = uncurry (flip TUnary op) <$> typecheckUnary c op e 
+typecheck c (Binary op e e') = uncurry3 (flip TBinary op) <$> typecheckBinary c op e e' 
+typecheck c (Let s e e')     = uncurry3 (flip TLet s) <$> typecheckLet c s e e' 
+typecheck c (If b t e)       = uncurry4 TIf <$> typecheckIf c b t e 
+typecheck c (Arrow s e e')   = uncurry (flip TEArrow s) <$> typecheckArrow c s e e' 
 
 
 typecheckLit :: Lit -> Either Error TypedExpr 
@@ -88,26 +100,6 @@ typecheckDict c ((k, v):xs) = do
     else Left $ TypeError ""
 
 
-{-
-typecheckDict :: Context -> [(Expr, Expr)] -> Either Error (Type, Type)
-typecheckDict c ((e,e'):es) = do 
-    (te, te') <- (,) <$> typecheck c e <*> typecheck c e' 
-    let (es1, es2) = unzip es
-    (tes, tes') <- (,) <$> traverse (typecheck c) es1 <*> traverse (typecheck c) es2 
-    if all (== te) tes && all (== te') tes' then do
-        expectClass Equatable $ type_ te 
-        Right (te, te') 
-    else Left $ TypeError ""  
-typecheckDict _ _ = undefined 
-
-
-typecheckArrow :: Context -> String -> Expr -> Expr -> Either Error (Type, Type)
-typecheckArrow c s e e' = do 
-    te <- typecheck c e 
-    let new = Map.insert s te c 
-    (te, ) <$> typecheck new e' 
-
-
 typecheckDef :: Def -> Either Error Type 
 typecheckDef DBool         = Right TBool 
 typecheckDef DInt          = Right TInt 
@@ -123,43 +115,58 @@ typecheckDef (DDict t t')  = do
 typecheckDef (DArrow t t') = TArrow <$> typecheckDef t <*> typecheckDef t' 
 
 
-typecheckUnary :: Context -> Unary -> Expr -> Either Error Type
+typecheckUnary :: Context -> Unary -> Expr -> Either Error (Type, TypedExpr)
 typecheckUnary c op e = do 
-    te <- typecheck c e 
+    te   <- typecheck c e 
+    let t = typeOf te  
     let (check, result) = unaryType op 
-    check te 
-    Right $ result te
+    check t
+    Right (result t, te)
 
 
-typecheckBinary :: Context -> Binary -> Expr -> Expr -> Either Error Type 
+typecheckBinary :: Context -> Binary -> Expr -> Expr -> Either Error (Type, TypedExpr, TypedExpr)
 typecheckBinary c Project e i = do 
-    te <- typecheck c e 
-    ti <- typecheck c i 
+    tee <- typecheck c e 
+    tei <- typecheck c i
+    let (te, ti) = (typeOf tee, typeOf tei)
     expectType ti TInt 
-    case (te, i) of 
-        (TTuple ts, Lit (LInt n)) 
-          | n >= 0 && n < length ts -> Right (ts !! n)
+    case (te, tei) of 
+        (TTuple ts, TLit TInt (LInt n)) 
+          | n >= 0 && n < length ts -> Right (ts !! n, tee, tei)
           | otherwise               -> Left $ TypeError ""
         _                           -> Left $ TypeError ""
 typecheckBinary c op e e' = do 
-    te  <- typecheck c e 
-    te' <- typecheck c e'
+    tee  <- typecheck c e 
+    tee' <- typecheck c e'
+    let (te, te') = (typeOf tee, typeOf tee')
     let (check, result) = binaryType op 
     check te te' 
-    Right $ result te te'  
+    Right $ (result te te', tee, tee')  
 
 
-typecheckLet :: Context -> String -> Expr -> Expr -> Either Error Type 
+typecheckLet :: Context -> String -> Expr -> Expr -> Either Error (Type, TypedExpr, TypedExpr)
 typecheckLet c s e e' = do 
-    te <- typecheck c e 
+    tee  <- typecheck c e 
+    let te = typeOf tee 
     let new = Map.insert s te c 
-    typecheck new e' 
+    tee' <- typecheck new e' 
+    Right $ (typeOf tee', tee, tee')
 
 
-typecheckIf :: Context -> Expr -> Expr -> Expr -> Either Error Type 
-typecheckIf c e e' e'' = do  
-    (te, te', te'') <- liftA3 (,,) (typecheck c e) (typecheck c e') (typecheck c e'')
-    expectType te TBool 
-    expectType te' te'' 
-    Right te'
--}
+typecheckIf :: Context -> Expr -> Expr -> Expr -> Either Error (Type, TypedExpr, TypedExpr, TypedExpr)
+typecheckIf c b t e = do  
+    (teb, tet, tee) <- liftA3 (,,) (typecheck c b) (typecheck c t) (typecheck c e)
+    let (tb, tt, te) = (typeOf teb, typeOf tet, typeOf tee) 
+    expectType tb TBool 
+    expectType tt te 
+    Right $ (tt, teb, tet, tee)
+
+
+typecheckArrow :: Context -> String -> Expr -> Expr -> Either Error (Type, TypedExpr)
+typecheckArrow c s e e' = do 
+    tee  <- typecheck c e 
+    let te = typeOf tee 
+    let new = Map.insert s te c 
+    tee' <- typecheck new e' 
+    let te' = typeOf tee' 
+    Right $ (TArrow te te', tee') 

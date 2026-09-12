@@ -28,6 +28,7 @@ typeClass (TList t)    = [Equatable | hasClass Equatable t] ++ [Comparable | has
 typeClass (TArray t)   = [Collectable]
 typeClass (TTuple ts)  = [Equatable | all (hasClass Equatable) ts] ++ [Comparable | all (hasClass Comparable) ts] ++ [Collectable]
 typeClass (TDict t t') = [Collectable]
+typeClass (TArrow _ _) = []
 
 
 unaryType :: Unary -> (Type -> Either Error (), Type -> Type)
@@ -38,7 +39,7 @@ unaryType ToReal = (expectClass Numeric, const TReal)
 unaryType Fact   = (expectClass Integral, const TInt)
 unaryType Len    = (expectClass Collectable, const TInt)
 unaryType Head   = (expectClass Inductive, \(TList t) -> t)
-unaryType Tail   = (expectClass Inductive, \(TList t) -> t)
+unaryType Tail   = (expectClass Inductive, \(TList t) -> TList t)
 
 
 binaryType :: Binary -> (Type -> Type -> Either Error (), Type -> Type -> Type)
@@ -53,7 +54,7 @@ binaryType op
   | op == Cons                     = (expectCons, flip const) 
   | op == Get                      = (expectGet, getResult) 
   | op == Apply                    = (expectApply, \(TArrow _ t) _ -> t)
-  | op == Compose                  = (expectCompose, \(TArrow t t') (TArrow t1 t1') -> TArrow t1' t)
+  | op == Compose                  = (expectCompose, \(TArrow b c) (TArrow a b') -> TArrow a c)
 
 
 hasClass :: TypeClass -> Type -> Bool 
@@ -106,12 +107,23 @@ expectGet _ _             = Left $ TypeError ""
 getResult :: Type -> Type -> Type 
 getResult (TList t) _  = t 
 getResult (TArray t) _ = t
+getResult (TDict _ v) _ = v 
 getResult _ _ = undefined 
 
 
 expectApply :: Type -> Type -> Either Error ()
 expectApply (TArrow t _) = expectType t 
+expectApply _            = undefined 
 
 
 expectCompose :: Type -> Type -> Either Error ()
-expectCompose (TArrow t t') (TArrow t1 t1') = expectType t1' t 
+expectCompose (TArrow b _) (TArrow _ b') = expectType b b' 
+expectCompose _ _                          = undefined 
+
+
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d 
+uncurry3 f (x, y, z) = f x y z 
+
+
+uncurry4 :: (a -> b -> c -> d -> e) -> (a,b,c,d) -> e
+uncurry4 f (a,b,c,d) = f a b c d
